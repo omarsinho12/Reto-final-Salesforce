@@ -1,0 +1,39 @@
+<apex:page standardController="Quote" renderAs="pdf" showHeader="false">
+    <h1>Resumen de Cotización</h1>
+    <p><strong>Nombre del estudiante:</strong> {!Quote.Contact.Name}</p>
+    <p><strong>Matrícula:</strong> {!Quote.Contact.Id}</p>
+    <p><strong>Forma de pago:</strong> {!Quote.Opportunity.Payment_Type__c}</p>
+    <p><strong>Total antes de descuentos:</strong> {!Quote.Subtotal}</p>
+    <p><strong>Descuentos aplicados:</strong> {!Quote.Contact.Applicable_discounts__c}</p>
+    <p><strong>Total después de descuentos:</strong> {!Quote.TotalPrice}</p>
+
+    <apex:repeat value="{!Quote.QuoteLineItems}" var="lineItem">
+        <p><strong>Producto:</strong> {!lineItem.Product2.Name}</p>
+        <p><strong>Precio Unitario:</strong> {!lineItem.UnitPrice}</p>
+        <p><strong>Cantidad:</strong> {!lineItem.Quantity}</p>
+        <p><strong>Descuento:</strong> {!lineItem.Discount}</p>
+        <p><strong>Total:</strong> {!lineItem.TotalPrice}</p>
+        <br/>
+    </apex:repeat>
+
+    <h2>Calendario de Pagos</h2>
+    
+    <apex:outputPanel rendered="{!Quote.Opportunity.Payment_Type__c == 'Monthly payments'}">
+        <p>Inscripción: 10 de julio</p>
+        <p><strong>Mensualidades:</strong></p>
+        <ul>
+            <!-- Cálculo de cada mensualidad -->
+            <apex:variable var="totalAfterDiscount" value="{!Quote.TotalPrice}" />
+            <apex:variable var="monthlyPayment" value="{!totalAfterDiscount / 6}" />
+            <li>10 de agosto: {!TEXT(monthlyPayment)} </li>
+            <li>10 de septiembre: {!TEXT(monthlyPayment)} </li>
+            <li>10 de octubre: {!TEXT(monthlyPayment)} </li>
+            <li>10 de noviembre: {!TEXT(monthlyPayment)} </li>
+            <li>10 de diciembre: {!TEXT(monthlyPayment)} </li>
+        </ul>
+    </apex:outputPanel>
+    
+    <apex:outputPanel rendered="{!Quote.Opportunity.Payment_Type__c == 'Cash payment'}">
+        <p>Pago único: 10 de julio: {!TEXT(Quote.TotalPrice)}</p>
+    </apex:outputPanel>
+</apex:page>

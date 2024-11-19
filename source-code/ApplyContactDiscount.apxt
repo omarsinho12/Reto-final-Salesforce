@@ -1,0 +1,104 @@
+trigger ApplyContactDiscount on Quote (after insert, after update) {
+    // Crear un conjunto para almacenar los IDs de las oportunidades relacionadas con los Quotes en el Trigger
+    Set<Id> opportunityIds = new Set<Id>();
+    for (Quote q : Trigger.new) {
+        opportunityIds.add(q.OpportunityId); // Agregar cada OpportunityId asociado al Quote
+    }
+
+    // Consultar las oportunidades relacionadas con los Quotes, incluyendo el ContactId asociado
+    Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>(
+        [SELECT Id, ContactId FROM Opportunity WHERE Id IN :opportunityIds]
+    );
+
+    // Crear un conjunto para almacenar los ContactIds asociados a las oportunidades
+    Set<Id> contactIds = new Set<Id>();
+    for (Opportunity opp : oppMap.values()) {
+        if (opp.ContactId != null) {
+            contactIds.add(opp.ContactId); // Agregar el ContactId si existe
+        }
+    }
+
+    // Consultar los contactos relacionados, incluyendo sus campos relevantes
+    Map<Id, Contact> contactMap = new Map<Id, Contact>();
+    if (!contactIds.isEmpty()) { // Verificar si hay ContactIds antes de realizar la consulta
+        contactMap = new Map<Id, Contact>(
+            [SELECT Id, Applicable_discounts__c, Average_Grade__c FROM Contact WHERE Id IN :contactIds]
+        );
+    }
+
+    // Consultar los QuoteLineItems relacionados con los Quotes
+    Set<Id> quoteIds = new Set<Id>();
+    for (Quote q : Trigger.new) {
+        quoteIds.add(q.Id); // Agregar los IDs de los Quotes en el Trigger
+    }
+
+    // Crear un mapa para agrupar los QuoteLineItems por QuoteId
+    Map<Id, List<QuoteLineItem>> quoteLineItemMap = new Map<Id, List<QuoteLineItem>>();
+    if (!quoteIds.isEmpty()) { // Verificar si hay QuoteIds antes de consultar
+        for (QuoteLineItem lineItem : [
+            SELECT Id, UnitPrice, Quantity, TotalPrice, Discount, QuoteId
+            FROM QuoteLineItem
+            WHERE QuoteId IN :quoteIds
+        ]) {
+            // Agrupar los QuoteLineItems bajo su QuoteId correspondiente
+            if (!quoteLineItemMap.containsKey(lineItem.QuoteId)) {
+                quoteLineItemMap.put(lineItem.QuoteId, new List<QuoteLineItem>());
+            }
+            quoteLineItemMap.get(lineItem.QuoteId).add(lineItem);
+        }
+    }
+
+    // Lista para almacenar los QuoteLineItems que necesitan ser actualizados
+    List<QuoteLineItem> lineItemsToUpdate = new List<QuoteLineItem>();
+
+    // Procesar cada Quote en el Trigger
+    for (Quote q : Trigger.new) {
+        // Obtener la oportunidad relacionada con el Quote
+        Opportunity opp = oppMap.get(q.OpportunityId);
+
+        if (opp != null && opp.ContactId != null) { // Verificar que la oportunidad y el contacto existen
+            // Obtener el contacto relacionado con la oportunidad
+            Contact contact = contactMap.get(opp.ContactId);
+
+            if (contact != null) { // Verificar que el contacto existe
+                // Inicializar el descuento total
+                Decimal totalDiscount = 0;
+
+                // Agregar un 10% de descuento si el promedio es mayor o igual a 9.5
+                if (contact.Average_Grade__c >= 9.5) {
+                    totalDiscount += 10;
+                }
+
+                // Verificar los valores seleccionados en el picklist múltiple
+                String discounts = contact.Applicable_discounts__c;
+                if (discounts != null) {
+                    if (discounts.contains('Beca deportiva 10%')) {
+                        totalDiscount += 10; // Agregar un 10% por Beca deportiva
+                    }
+                    if (discounts.contains('Beca por familiares docentes 30%')) {
+                        totalDiscount += 30; // Agregar un 30% por familiares docentes
+                    }
+                    if (discounts.contains('Beca por necesidad economica 30%')) {
+                        totalDiscount += 30; // Agregar un 30% por necesidad económica
+                    }
+                }
+
+                // Limitar el descuento total a un máximo del 60%
+                totalDiscount = Math.min(totalDiscount, 60);
+
+                // Aplicar el descuento calculado a los QuoteLineItems relacionados
+                if (quoteLineItemMap.containsKey(q.Id)) {
+                    for (QuoteLineItem lineItem : quoteLineItemMap.get(q.Id)) {
+                        lineItem.Discount = totalDiscount; // Asignar el descuento total al campo Discount
+                        lineItemsToUpdate.add(lineItem); // Agregar el QuoteLineItem a la lista para actualizar
+                    }
+                }
+            }
+        }
+    }
+
+    // Actualizar los QuoteLineItems con los descuentos aplicados
+    if (!lineItemsToUpdate.isEmpty()) {
+        update lineItemsToUpdate; // Realizar la actualización en la base de datos
+    }
+}

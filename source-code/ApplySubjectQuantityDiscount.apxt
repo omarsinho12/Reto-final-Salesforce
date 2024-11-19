@@ -1,0 +1,57 @@
+trigger ApplySubjectQuantityDiscount on Quote (after insert, after update) {
+    // Crear una lista para almacenar los QuoteLineItems que necesitan ser actualizados
+    List<QuoteLineItem> lineItemsToUpdate = new List<QuoteLineItem>();
+
+    // Obtener los OpportunityIds de los Quotes en el Trigger
+    Set<Id> opportunityIds = new Set<Id>();
+    for (Quote q : Trigger.new) {
+        opportunityIds.add(q.OpportunityId);
+    }
+
+    // Consultar las oportunidades relacionadas
+    Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>(
+        [SELECT Id, Payment_Type__c FROM Opportunity WHERE Id IN :opportunityIds]
+    );
+
+    // Iterar sobre las cotizaciones en el Trigger
+    for (Quote q : Trigger.new) {
+        // Obtener los productos asociados a esta cotización
+        List<QuoteLineItem> lineItems = [
+            SELECT Id, UnitPrice, Quantity, TotalPrice, Discount 
+            FROM QuoteLineItem 
+            WHERE QuoteId = :q.Id
+        ];
+
+        Integer productCount = lineItems.size();
+
+        if (productCount > 1) {
+            for (Integer i = 0; i < productCount; i++) {
+                QuoteLineItem lineItem = lineItems[i];
+                if (productCount == 2 && i == 1) {
+                    // Si hay 2 productos, el segundo tiene 10% de descuento
+                    lineItem.Discount = 10;
+                } else if (productCount >= 3 && i >= 1) {
+                    // Si hay 3 o más productos, los productos 2 en adelante tienen 15% de descuento
+                    lineItem.Discount = 15;
+                }
+                lineItemsToUpdate.add(lineItem);
+            }
+        }
+
+        // Verificar si la oportunidad tiene tipo de pago de contado
+        Opportunity opp = oppMap.get(q.OpportunityId);
+        if (opp != null && opp.Payment_Type__c == 'Cash Payment') {
+            // Aplicar un 5% de descuento adicional a cada QuoteLineItem
+            for (QuoteLineItem lineItem : lineItems) {
+                // Sumar el 5% de descuento adicional al descuento existente
+                lineItem.Discount += 5;
+                lineItemsToUpdate.add(lineItem);
+            }
+        }
+    }
+
+    // Actualizar los productos con los descuentos aplicados
+    if (!lineItemsToUpdate.isEmpty()) {
+        update lineItemsToUpdate;
+    }
+}

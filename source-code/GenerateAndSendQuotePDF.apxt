@@ -1,0 +1,30 @@
+trigger GenerateAndSendQuotePDF on Quote (after insert, after update) {
+    // Lista para almacenar los correos electrónicos a enviar
+    List<Messaging.SingleEmailMessage> emails = new List<Messaging.SingleEmailMessage>();
+
+    for (Quote quote : Trigger.new) {
+        // Generar la URL del PDF utilizando la página Visualforce
+        String pdfURL = '/apex/QuotePDF?id=' + quote.Id;
+        
+        // Generar el cuerpo del correo
+        Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
+        email.setToAddresses(new String[] {quote.Contact.Email});
+        email.setSubject('Cotización para ' + quote.Contact.Name);
+        email.setHtmlBody('Hola ' + quote.Contact.Name + ',<br/>Adjunto encontrarás tu cotización.');
+        
+        // Adjuntar el PDF como archivo
+        PageReference pdfPage = new PageReference(pdfURL);
+        Blob pdfBlob = pdfPage.getContentAsPDF();
+        Messaging.EmailFileAttachment attachment = new Messaging.EmailFileAttachment();
+        attachment.setFileName('Cotización_' + quote.Name + '.pdf');
+        attachment.setBody(pdfBlob);
+        email.setFileAttachments(new Messaging.EmailFileAttachment[] {attachment});
+        
+        emails.add(email);
+    }
+    
+    // Enviar todos los correos electrónicos
+    if (!emails.isEmpty()) {
+        Messaging.sendEmail(emails);
+    }
+}
